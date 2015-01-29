@@ -679,72 +679,19 @@ cases, only a single <a><code>AudioContext</code></a> is used per document.</p>
     <dt> MediaStreamAudioDestinationNode createMediaStreamDestination() </dt>
     <dd>Creates a <a><code>MediaStreamAudioDestinationNode</code></a> </dd>
 
-    <dt> AudioWorkerNode createAudioWorker()</dt>
+    <dt>Promise&lt;AudioWorker&gt; createAudioWorker()</dt>
     <dd>
-      Creates an <a><code>AudioWorkerNode</code></a> and its associated <a><code>AudioWorkerGlobalScope</code></a> 
-      for direct audio processing using JavaScript.  An IndexSizeError exception MUST 
-      be thrown if <a><code>numberOfInputChannels</code></a> or
-      <a><code>numberOfOutputChannels</code></a> are outside the valid range.
+      The <dfn id="createAudioWorker-context"><code>createAudioWorker</code></dfn> method creates an <a><code>AudioWorker</code></a> and its associated <a><code>AudioWorkerGlobalScope</code></a> 
+      for direct audio processing using JavaScript.  An <a><code>AudioWorker</code></a> acts as a factory for <a><code>AudioWorkerNode</code></a> instances,
+      allowing the nodes to be created synchronously on demand.  Because script loading must be performed asynchronously, a Promise is returned. Its
+      result is an <a>AudioWorker</a> whose script has been loaded and run, and which is ready to create nodes.
 
       <dl class=parameters>
         <dt> DOMString scriptURL </dt>
         <dd>
           This parameter represents the URL of the script to be loaded as an <a>AudioWorker</a>.
         </dd>
-        <dt> optional Array inputs = null </dt>
-        <dd>
-          <p>
-            This parameter determines the number of inputs for the worker, as well as the default number of channels for that input.  The number of inputs cannot be changed once the node is created, although the number of channels in each input can be (see onprocess for more detail).  The parameter is an Array whose length determines the number of inputs; each member of this Array will be coerced to an integer representing the default number of channels for the given input. Channel counts of up to 32 must be supported; values outside the supported range should throw NotSupportedError.
-          </p>
-          <p>
-            A null Array is treated the same as "[2]" - that is, it will default to a single input with two channels.
-          </p>
-          <p>
-            An empty Array is explicitly supported, and will cause the node to have no inputs - i.e., any attempt to connect() to this node will fail.  (This is useful for nodes that function only as sources, such as an oscillator.)
-          </p>
-        </dd>
-        <dt> optional Array outputs = null </dt>
-        <dd>
-          <p>
-            This parameter determines the number of outputs for the worker, as well as the default number of channels for each output.  The number of outputs cannot be changed once the node is created, although the number of channels in each output can be (see onprocess for more detail).  The parameter is an Array whose length determines the number of outputs; each member of this Array will be coerced to an integer representing the default number of channels for the given output. Channel counts of up to 32 must be supported; values outside the supported range should throw NotSupportedError.
-          </p>
-          <p>
-            A null Array is treated the same as "[2]" - that is, it will default to a single output with two channels.
-          </p>
-          <p>
-            An empty Array is explicitly supported, and will cause the node to have no inputs - i.e., any attempt to connect() to this node will fail.  (This is useful for nodes that function only as sources, such as an oscillator.)
-          </p>
-        </dd>
       </dl>
-      <p>
-        It is invalid for both the number of inputs and number of outputs to be zero (i.e. both Arrays are empty).  In this case, implementations should throw NotSupportedError.
-      </p>
-      <p>
-        Examples of usage:
-      </p>
-      <ul>
-        <li>
-          <code>createAudioWorker( scriptURL )</code> creates a single stereo input with a single stereo output.
-        </li>
-        <li>
-          <code>createAudioWorker( scriptURL, [1], [] )</code> creates a single mono input with no output.
-        </li>
-        <li>
-          <code>createAudioWorker( scriptURL, [1], [1] )</code> also creates a single mono input with a single mono output.
-        </li>
-        <li>
-          <code>createAudioWorker( scriptURL, [1], [2] )</code> creates a single mono input with a stereo output.
-        </li>
-        <li>
-          <code>createAudioWorker( scriptURL, [2,1], [2] )</code> creates two inputs - one stereo, one mono - and a stereo output.
-        </li>
-        <li>
-          <code>createAudioWorker( scriptURL, [1,1,1,1,1,1], [6] )</code> creates six mono inputs with a single 6-channel output. (This is similar to a 6-channel ChannelMergerNode.)
-        </li>
-        <li>
-          <code>createAudioWorker( scriptURL, [6], [1,1,1,1,1,1] )</code> creates a single 6-channel input with six mono outputs. (This is similar to a 6-channel ChannelSplitterNode.)
-        </li>
-      </ul>
     </dd>
 
     <dt> ScriptProcessorNode createScriptProcessor()</dt>
@@ -2249,25 +2196,50 @@ href="http://www.w3.org/html/wg/drafts/html/master/infrastructure.html#cors-cros
 <section>
 <h2>The <dfn>AudioWorker</dfn></h2>
 
-<p>AudioWorker is not an actual class in the Web Audio API; an Audio Worker is 
-  represented in the main thread by the <a>AudioWorkerNode</a> methods 
-  (postMessage, onmessage and terminate, in particular). From inside an audio 
-  worker script, an Audio Worker is represented by an 
-  <a><code>AudioWorkerGlobalScope</code></a> object representing the node's 
-  contextual information; all worker scripts are run in the audio processing 
-  thread.</p>
+<p><a>AudioWorker</a> is an interface obtainable from <a>AudioContext</a>'s <a><code>createAudioWorker</code></a> method.
+  It represents the main thread's view of an associated audio processing worker script,
+  which is hosted inside a corresponding <a>AudioWorkerGlobalScope</a> and runs in the audio processing thread.
+  <a>AudioWorker</a>s act as factories for creating <a>AudioWorkerNode</a>s.
+</p>
+
+<dl title="interface AudioWorker" class="idl">
+  <dt>readonly attribute AudioContext context</dt>
+  <dd>The <a>AudioContext</a> from which this <a>AudioWorker</a> was created.
+  </dd>
+  <dt>AudioWorkerNode createAudioWorkerNode(optional sequence &lt;Transferable&gt; data)</dt>
+  <dd>Creates a new <a>AudioWorkerNode</a> that exhibits the parameters and input/output configuration
+      defined by the <a>AudioWorkerGlobalScope</a>. The node is available immediately for use. Following this call,
+      an <a>AudioNodeCreatedEvent</a> is dispatched that creates the audio thread side of the node. The node does not
+      actually begin to process audio until this event dispatch has completed and an onaudioprocess handler has been
+      attached to the node.
+    <dl class="parameters">
+      <dt>optional sequence &lt;Transferable&gt; data</dt>
+      <dd>
+        The <a><code>data</code></a> parameter is provided in an <a>AudioNodeCreatedEvent</a> dispatched to a
+        <a>AudioWorkerGlobalScope</a>'s <code>onaudionodecreated</code> handler. It allows the audio thread
+        to initialize nodes in a way that depends on some data passed in from the main thread.  Data passed from the
+        main thread is transferred to the audio thread and thus is subject to neutering.     
+      </dd>
+    </dl>
+  </dd>
+  <dt>void terminate()</dt>
+  <dd>The terminate() method, when invoked, must cause the 
+    <a href="http://dev.w3.org/html5/workers/#terminate-a-worker">"terminate 
+      a worker"</a> algorithm to be run on the worker with which the object 
+      is associated.  This will cease any <a>AudioProcessEvent</a>s being
+      dispatched to the AudioWorker, and will cause the destruction of the
+      associated <a>AudioWorkerGlobalScope</a>.  In practical terms, this means all nodes created by this <a>AudioWorker</a>
+      will be disconnected from any downstream connections.</dd>
+</dl>
+</section>
 
 <section>
 <h2>The <dfn>AudioWorkerNode</dfn> Interface</h2>
 
 <p>This interface represents an <a><code>AudioNode</code></a> which interacts 
-  with a <a>Worker</a> thread to generate, process, or analyse audio directly. 
-  The user creates a separate audio processing worker script, which is hosted 
-  inside the AudioWorkerGlobalScope and runs inside the audio processing 
-  thread, rather than the main UI thread.  The AudioWorkerNode represents the 
-  processing node in the main processing thread's node graph; the 
-  AudioWorkerGlobalScope represents the context in which the user's audio 
-  processing script is run.</p>
+  with an <a>AudioWorker</a> thread to generate, process, or analyse audio directly. 
+  An <a>AudioWorkerNode</a> is represented in the audio thread by an <a>AudioWorkerNodeHandle</a>.
+</p>
 <p>Nota bene that if the Web Audio implementation normally runs audio process 
   at higher than normal thread priority, utilizing AudioWorkerNodes may cause 
   demotion of the priority of the audio thread (since user scripts cannot be 
@@ -2282,22 +2254,14 @@ href="http://www.w3.org/html/wg/drafts/html/master/infrastructure.html#cors-cros
     channelInterpretation = "speakers";
 </pre>
 
-<p>The number of input and output channels specified in the createAudioWorker() call determines the initial number of input and output channels (and the number of channels present for each input and output in the AudioBuffers passed to the AudioProcess event handler inside the <a>AudioWorkerGlobalScope</a>).
-</p>
-
 <p>Example usage:</p>
 <pre class="highlight">
-    var node = context.createAudioWorker( "bitcrusher.js" );
+  context.createAudioWorker( "bitcrusher.js" ).then(function(worker) {
+    var node = worker.createAudioWorkerNode();
+  });
 </pre>
 
 <dl title="interface AudioWorkerNode : AudioNode" class="idl">
-  <dt>void terminate()</dt>
-  <dd>The terminate() method, when invoked, must cause the 
-    <a href="http://dev.w3.org/html5/workers/#terminate-a-worker">"terminate 
-      a worker"</a> algorithm to be run on the worker with which the object 
-      is associated.  This will cease any <a>AudioProcessEvent</a>s being
-      dispatched to the Audio Worker, and will cause the destruction of the
-      worker thread.  In practical terms, this means the node will disconnect itself from any downstream connections.</dd>
   <dt>void postMessage(any message, optional sequence&lt;Transferable> transfer)</dt>
   <dd>postMessage may be called to send a message to the Audio Worker, via the
     algorithm defined by <a href="http://dev.w3.org/html5/workers/#dom-worker-postmessage">
@@ -2305,42 +2269,6 @@ href="http://www.w3.org/html/wg/drafts/html/master/infrastructure.html#cors-cros
   <dt>attribute EventHandler onmessage</dt>
   <dd>The onmessage handler is called whenever the Audio Worker posts a 
     message back to the main thread.</dd>
-  <dt>AudioParam addParameter(DOMString name, optional float defaultValue) </dt>
-  <dd>
-    <p>
-      Causes a correspondingly-named read-only <a>AudioParam</a> to be 
-      present on the <a>AudioWorkerNode</a>, and a correspondingly-named 
-      read-only <a>Float32Array</a> to be present on the 
-      <a><code>parameters</code></a> object exposed on the 
-      <a>AudioProcessEvent</a> on subsequent audio processing events.  The 
-      AudioParam may immediately have its scheduling methods called, its 
-      .<a>value</a> set, or AudioNodes connected to it.</p>
-    <p>The <code>name</code> parameter is the name used for the read-only 
-      AudioParam added to the AudioWorkerNode, and the name used for the 
-      read-only <code>Float32Array</code> that will be present on the 
-      <a><code>parameters</code></a> object exposed on subsequent 
-      <a>AudioProcessEvent</a>s.</p>
-    <p>The <dfn
-      id="dfn-defaultValue">defaultValue</dfn> parameter is the default value 
-      for the <a>AudioParam</a>'s <a>value</a> attribute, as well as 
-      therefore the default value that will appear in the Float32Array in the 
-      worker script (if no other parameter changes or connections affect the 
-      value).</p>
-  </dd>
-  <dt>void removeParameter(DOMString name) </dt>
-  <dd>
-    <p>
-      Removes a previously-added parameter named <code>name</code> from the 
-      <a>AudioWorkerNode</a>.  This will also remove the correspondingly-named 
-      read-only <a>AudioParam</a> from the <a>AudioWorkerNode</a>, and will 
-      remove the correspondingly-named read-only <a>Float32Array</a> from the 
-      <a>AudioProcessEvent</a>'s <a><code>parameters</code></a> member on 
-      subsequent audio processing events. A 
-      NotFoundError exception must be thrown if no parameter with that name 
-      exists on this node.</p>
-    <p>The <code>name</code> parameter identifies the parameter to be 
-      removed.</p>
-  </dd>
 </dl>
 </dl>
 <p>
@@ -2360,19 +2288,163 @@ href="http://www.w3.org/html/wg/drafts/html/master/infrastructure.html#cors-cros
 <h2>The AudioWorkerGlobalScope Interface</h2>
 
 <p>This interface is a <a><code>DedicatedWorkerGlobalScope</code></a>-derived 
-  object representing the context in which an audio processing script is run; 
+  object representing the context in which audio processing scripts are run
+  for nodes created from a given <a>AudioWorker</a>; 
   it is designed to enable the generation, processing, and analysis of audio 
   data directly using JavaScript in a Worker thread. </p>
 
 <p>
 The <a><code>AudioWorkerGlobalScope</code></a> has an 
+<dfn id="audionodecreated-worker">audionodecreated</dfn> event that is dispatched
+when new <a>AudioNode</a>s are created on the main thread.
+
+<dl title="interface AudioWorkerGlobalScope : DedicatedWorkerGlobalScope" class="idl">
+  <dt>attribute EventHandler onaudionodecreated</dt>
+  <dd>
+    A property used to set the <code>EventHandler</code> (described in <cite>
+    <a href="http://www.whatwg.org/specs/web-apps/current-work/#eventhandler">
+    HTML</a></cite>[[!HTML]]) for the <a href="#audionodecreated-worker">
+    <code>audionodecreated</code></a> event that is dispatched to
+    <a><code>AudioWorkerGlobalScope</code></a> when a new
+    <a><code>AudioWorkerNode</code></a> is created. An event of type
+    <a><code>AudioNodeCreatedEvent</code></a> will be dispatched to the event 
+    handler.
+  </dd>
+  <dt>readonly attribute float sampleRate</dt>
+  <dd>
+    The sample rate of the host <a>AudioContext</a> (since inside the 
+    <a>Worker</a> scope, the user will not have direct access to the 
+    <a>AudioContext</a>.
+  </dd>
+  <dt>AudioParam addParameter(DOMString name, optional float defaultValue) </dt>
+  <dd>
+    <p>
+      Causes a correspondingly-named read-only <a>AudioParam</a> to be 
+      present on all <a>AudioWorkerNode</a>s created by this <a>AudioWorkerGlobalScope</a>, and a correspondingly-named 
+      read-only <a>Float32Array</a> to be present on the 
+      <a><code>parameters</code></a> object exposed on the 
+      <a>AudioProcessEvent</a> on subsequent audio processing events.  The 
+      AudioParam may immediately have its scheduling methods called, its 
+      .<a>value</a> set, or AudioNodes connected to it.</p>
+    <p>The <code>name</code> parameter is the name used for the read-only 
+      AudioParam added to the AudioWorkerNode, and the name used for the 
+      read-only <code>Float32Array</code> that will be present on the 
+      <a><code>parameters</code></a> object exposed on subsequent 
+      <a>AudioProcessEvent</a>s.</p>
+    <p>The <dfn
+      id="dfn-defaultValue">defaultValue</dfn> parameter is the default value 
+      for the <a>AudioParam</a>'s <a>value</a> attribute, as well as 
+      therefore the default value that will appear in the Float32Array in the 
+      worker script (if no other parameter changes or connections affect the 
+      value).</p>
+  </dd>
+  <dt>void removeParameter(DOMString name)</dt>
+  <dd>
+  <i>(Propose removing from spec pending understanding of use case, since this is no longer a per-node action.)</i>
+<!--     <p>
+      Removes a previously-added parameter named <code>name</code> from the 
+      <a>AudioWorkerNode</a>.  This will also remove the correspondingly-named 
+      read-only <a>AudioParam</a> from the <a>AudioWorkerNode</a>, and will 
+      remove the correspondingly-named read-only <a>Float32Array</a> from the 
+      <a>AudioProcessEvent</a>'s <a><code>parameters</code></a> member on 
+      subsequent audio processing events. A 
+      NotFoundError exception must be thrown if no parameter with that name 
+      exists on this node.</p>
+    <p>The <code>name</code> parameter identifies the parameter to be 
+      removed.</p>
+ -->  </dd>
+  <dt>void setNodeConfiguration(inputs, outputs)</dt>
+  <dd>
+    Determines the input and output configuration and channel count of all nodes created by this AudioWorker. If not called, the
+    configuration defaults to a single input and single output, each with 2 channels (as if <code>setNodeConfiguration()</code> had been called with no arguments).
+
+    <dl class=parameters>
+      <dt> optional Array inputs = null </dt>
+      <dd>
+        <p>
+          This parameter determines the number of inputs for the worker, as well as the default number of channels for that input.  The number of inputs cannot be changed once the node is created, although the number of channels in each input can be (see onprocess for more detail).  The parameter is an Array whose length determines the number of inputs; each member of this Array will be coerced to an integer representing the default number of channels for the given input. Channel counts of up to 32 must be supported; values outside the supported range should throw NotSupportedError.
+        </p>
+        <p>
+          A null Array is treated the same as "[2]" - that is, it will default to a single input with two channels.
+        </p>
+        <p>
+          An empty Array is explicitly supported, and will cause the node to have no inputs - i.e., any attempt to connect() to this node will fail.  (This is useful for nodes that function only as sources, such as an oscillator.)
+        </p>
+      </dd>
+      <dt> optional Array outputs = null </dt>
+      <dd>
+        <p>
+          This parameter determines the number of outputs for the worker, as well as the default number of channels for each output.  The number of outputs cannot be changed once the node is created, although the number of channels in each output can be (see onprocess for more detail).  The parameter is an Array whose length determines the number of outputs; each member of this Array will be coerced to an integer representing the default number of channels for the given output. Channel counts of up to 32 must be supported; values outside the supported range should throw NotSupportedError.
+        </p>
+        <p>
+          A null Array is treated the same as "[2]" - that is, it will default to a single output with two channels.
+        </p>
+        <p>
+          An empty Array is explicitly supported, and will cause the node to have no inputs - i.e., any attempt to connect() to this node will fail.  (This is useful for nodes that function only as sources, such as an oscillator.)
+        </p>
+      </dd>
+    </dl>
+    <p>
+      It is invalid for both the number of inputs and number of outputs to be zero (i.e. both Arrays are empty).  In this case, implementations should throw NotSupportedError.
+    </p>
+    <p>
+      Examples of usage:
+    </p>
+    <ul>
+      <li>
+        <code>setNodeConfiguration()</code> determines a single stereo input with a single stereo output.
+      </li>
+      <li>
+        <code>setNodeConfiguration( [1], [] )</code> creates a single mono input with no output.
+      </li>
+      <li>
+        <code>setNodeConfiguration( [1], [1] )</code> also creates a single mono input with a single mono output.
+      </li>
+      <li>
+        <code>setNodeConfiguration( [1], [2] )</code> creates a single mono input with a stereo output.
+      </li>
+      <li>
+        <code>setNodeConfiguration( [2,1], [2] )</code> creates two inputs - one stereo, one mono - and a stereo output.
+      </li>
+      <li>
+        <code>setNodeConfiguration( [1,1,1,1,1,1], [6] )</code> creates six mono inputs with a single 6-channel output. (This is similar to a 6-channel ChannelMergerNode.)
+      </li>
+      <li>
+        <code>setNodeConfiguration( [6], [1,1,1,1,1,1] )</code> creates a single 6-channel input with six mono outputs. (This is similar to a 6-channel ChannelSplitterNode.)
+      </li>
+    </ul>
+  </dd>
+</dl>
+</section>
+
+<section>
+<h2>The AudioWorkerNodeHandle Interface</h2>
+
+<p>This interface represents the audio thread side of an <a>AudioWorkerNode</a> within an <a>AudioWorkerGlobalScope</a>.
+</p>
+
+<p>
+The <a><code>AudioWorkerNodeHandle</code></a> has an 
 <dfn id="audioprocess-worker">audioprocess</dfn> event that is dispatched
 synchronously to process audio frames.  
 <a href="#audioprocess-worker"><code>audioprocess</code></a> events are only
 dispatched if the <a><code>AudioWorkerNode</code></a> has at least one input or
 one output connected.
+</p>
 
-<dl title="interface AudioWorkerGlobalScope : DedicatedWorkerGlobalScope" class="idl">
+<p>
+It also supports communication with its <a>AudioWorkerNode</a> in the main thread using
+<code>onmessage</code> and <code>postMessage</code>, allowing the node's behavior to be
+controlled by the application and letting the node send data to the application.</p>
+
+<dl title="interface AudioWorkerNodeHandle" class="idl">
+  <dt>void postMessage(any message, optional sequence&lt;Transferable&gt; transfer)</dt>
+  <dd>postMessage may be called to send a message to the main thread, via the
+    algorithm defined by <a href="http://dev.w3.org/html5/workers/#dom-worker-postmessage">
+    the Worker specification</a>.</dd>
+  <dt>attribute EventHandler onmessage</dt>
+  <dd>The onmessage handler is called whenever the main thread posts a 
+    message to the <a>AudioWorkerNode</a> to which this <a>AudioWorkerNodeHandle</a> corresponds.</dd>
   <dt>attribute EventHandler onaudioprocess</dt>
   <dd>
     A property used to set the <code>EventHandler</code> (described in <cite>
@@ -2383,12 +2455,6 @@ one output connected.
     <a><code>AudioWorkerNode</code></a> is connected. An event of type
     <a><code>AudioProcessEvent</code></a> will be dispatched to the event 
     handler.
-  </dd>
-  <dt>readonly attribute float sampleRate</dt>
-  <dd>
-    The sample rate of the host <a>AudioContext</a> (since inside the 
-    <a>Worker</a> scope, the user will not have direct access to the 
-    <a>AudioContext</a>.
   </dd>
 </dl>
 </section>
@@ -2405,39 +2471,51 @@ one output connected.
         AudioWorker.</p>
 
     <h5>Main file javascript</h5>
-    <pre class="highlight">var bitcrusherNode = audioContext.createAudioWorker("bitcrusher_worker.js");
+    <pre class="highlight">var bitcrusherPromise = audioContext.createAudioWorker("bitcrusher_worker.js");
+bitcrusherPromise.then(function(worker) {
+  // At this point, the worker is loaded and available for synchronous AudioWorkerNode creation.
+  var bitcrusherNode = worker.createAudioWorkerNode({bits: 8}); // In this example the number of bits is fixed for a given node.
+  bitcrusherNode.frequencyReduction.value = 0.8;
+  /* The node can now be used in the audio processing graph immediately. */
+})
+</pre>
 
-// Custom parameter - number of bits to crush down to - default 8
-bitcrusherNode.addParameter( "bits", 8 );
-
-// Custom parameter - frequency reduction, 0-1, default 0.5
-bitcrusherNode.addParameter( "frequencyReduction", 0.5 );</pre>
     <h5>bitcrusher_worker.js</h5>
-    <pre class="highlight">var phaser = 0;
-var lastDataValue = 0;
+    <pre class="highlight">// Configure custom AudioParam - frequency reduction, 0-1, default 0.5
+addParameter( "frequencyReduction", 0.5 );
 
-onaudioprocess= function (e) {
-  for (var channel=0; channel&lt;e.inputs[0].length; channel++) {
-    var inputBuffer = e.inputs[0][channel];
-    var outputBuffer = e.outputs[0][channel];
-    var bufferLength = inputBuffer.length;
-    var bitsArray = e.parameters.bits;
-    var frequencyReductionArray = e.parameters.frequencyReduction;
+onaudionodecreated = function(e) {
+  // construction-time data passed from main thread
+  var bits = (e.data instanceof Object && e.data.bits) || 8;   // e.data is per-node data passed to createAudioWorkerNode()
 
-    for (var i=0; i&lt;bufferLength; i++) {
-      var bits = bitsArray ? bitsArray[i] : 8;
-      var frequencyReduction = frequencyReductionArray ? frequencyReductionArray[i] : 0.5;
+  // internal state variables of node -- in this example, we use closure variables rather than dynamically adding attributes to the node handle.
+  var phaser = 0;
+  var lastDataValue = 0;
 
-      var step = Math.pow(1/2, bits);
-      phaser += frequencyReduction;
-      if (phaser >= 1.0) {
-          phaser -= 1.0;
-          lastDataValue = step * Math.floor(inputBuffer[i] / step + 0.5);
+  e.nodeHandle.onaudioprocess = function (e) {
+    for (var channel=0; channel&lt;e.inputs[0].length; channel++) {
+      var inputBuffer = e.inputs[0][channel];
+      var outputBuffer = e.outputs[0][channel];
+      var bufferLength = inputBuffer.length;
+      var bitsArray = e.parameters.bits;
+      var frequencyReductionArray = e.parameters.frequencyReduction;
+
+      for (var i=0; i&lt;bufferLength; i++) {
+        var bits = bitsArray ? bitsArray[i] : 8;
+        var frequencyReduction = frequencyReductionArray ? frequencyReductionArray[i] : 0.5;
+
+        var step = Math.pow(1/2, bits);
+        phaser += frequencyReduction;
+        if (phaser >= 1.0) {
+            phaser -= 1.0;
+            lastDataValue = step * Math.floor(inputBuffer[i] / step + 0.5);
+        }
+        outputBuffer[i] = lastDataValue;
       }
-      outputBuffer[i] = lastDataValue;
     }
-  }
-};</pre>
+  };
+}
+</pre>
   </section>
   <section>
     <h4>A Volume Meter and Clip Detector</h4>
@@ -2447,97 +2525,119 @@ onaudioprocess= function (e) {
       the main thread.  This node does not use any output. </p>
 
     <h5>Main file javascript</h5>
-    <pre class="highlight">var vuNode = audioContext.createAudioWorker("vu_meter_worker.js", [1], [] );
+<pre class="highlight">audioContext.createAudioWorker("vu_meter_worker.js").then(function(worker) {
+  var vuNode = worker.createAudioWorkerNode();
 
-// This handles communication back from the volume meter
-vuNode.onmessage = function (event) {
-  if (event.data instanceof Object ) {
-    if (event.data.hasOwnProperty("clip")
-      this.clip = event.data.clip;
-    if (event.data.hasOwnProperty("volume")
-      this.volume = event.data.volume;
+  // This handles communication back from the volume meter
+  vuNode.onmessage = function (event) {
+    if (event.data instanceof Object ) {
+      if (event.data.hasOwnProperty("clip")
+        this.clip = event.data.clip;
+      if (event.data.hasOwnProperty("volume")
+        this.volume = event.data.volume;
+    }
   }
-}
 
-// Set up some configuration parameters
-vuNode.postMessage( 
-  { "smoothing": 0.9,   // Smoothing parameter
-    "clipLevel": 0.9,   // Level to consider "clipping"
-    "clipLag": 750,     // How long to keep "clipping" lit up after clip (ms)
-    "updating": 90      // How frequently to update volume and clip param (ms)
-  });
+  // Set up some configuration parameters
+  vuNode.postMessage( 
+    { "smoothing": 0.9,   // Smoothing parameter
+      "clipLevel": 0.9,   // Level to consider "clipping"
+      "clipLag": 750,     // How long to keep "clipping" lit up after clip (ms)
+      "updating": 90      // How frequently to update volume and clip param (ms)
+    });
 
-// Set up volume and clip attributes.  These will be updated by our onmessage.
-vuNode.volume = 0;
-vuNode.clip = false;</pre>
+  // Set up volume and clip attributes.  These will be updated by our onmessage.
+  vuNode.volume = 0;
+  vuNode.clip = false;</pre>
+});
 
     <h5>vu_meter_worker.js</h5>
-    <pre class="highlight">// how many samples between updates - default 100ms
-this.timeToNextUpdate = 0.1 * this.sampleRate;
+    <pre class="highlight">// This kind of node has one mixed-to-mono input, no outputs
+setNodeConfiguration([1], []);
 
-// This just handles setting attribute values
-onmessage = function ( event ) {
-  if (event.data instanceof Object ) {
-    if (event.data.hasOwnProperty("smoothing")
-      this.smoothing = event.data.smoothing;
-    if (event.data.hasOwnProperty("clipLevel")
-      this.clipLevel = event.data.clipLevel;
-    if (event.data.hasOwnProperty("clipLag")
-      this.clipLag = event.data.clipLag / 1000;  // convert to seconds
-    if (event.data.hasOwnProperty("updating")    // convert to samples
-      this.updatingInterval = event.data.updating * this.sampleRate / 1000 ;
-  }
-};
 
-onaudioprocess = function ( event ) {
-  var buf = event.inputs[0][0];  // Node forces mono
-  var bufLength = buf.length;
-  var sum = 0;
-  var x;
+onaudionodecreated = function(e) {
+ var vu = e.nodeHandle;
 
-  // Do a root-mean-square on the samples: sum up the squares...
-  for (var i=0; i&lt;bufLength; i++) {
-    x = buf[i];
-    if (Math.abs(x)>=this.clipLevel) {
-      this.clipping = true;
-      this.unsentClip = true;  // Make sure, for every clip, we send a message.
-      this.lastClip = event.playbackTime + (i/this.sampleRate);
+ // how many samples between updates - default 100ms
+ vu.timeToNextUpdate = 0.1 * this.sampleRate;
+ vu.smoothing = 0;
+ vu.clipLevel = 0;
+ vu.clipLag = 0;
+
+  // This handles setting attribute values on the AudioWorkerNodeHandle
+  // when messaged to do so from the main thread. The 'this' variable
+  // is equal to the handle, since it's fielding the onaudioprocess event.
+  vu.onmessage = function ( event ) {
+    if (event.data instanceof Object) {
+      if (event.data.hasOwnProperty("smoothing")
+        this.smoothing = event.data.smoothing;
+      if (event.data.hasOwnProperty("clipLevel")
+        this.clipLevel = event.data.clipLevel;
+      if (event.data.hasOwnProperty("clipLag")
+        this.clipLag = event.data.clipLag / 1000;  // convert to seconds
+      if (event.data.hasOwnProperty("updating")    // convert to samples
+        this.updatingInterval = event.data.updating * this.sampleRate / 1000 ;
     }
-    sum += x * x;
-  }
+  };
 
-  // ... then take the square root of the sum.
-  var rms =  Math.sqrt(sum / bufLength);
+  vu.onaudioprocess = function ( event ) {
+    var buf = event.inputs[0][0];  // Node forces mono
+    var bufLength = buf.length;
+    var sum = 0;
+    var x;
 
-  // Now smooth this out with the smoothing factor applied
-  // to the previous sample - take the max here because we
-  // want "fast attack, slow release."
-  this.volume = Math.max(rms, this.volume*this.smoothing);
-  if (this.clipping &amp;&amp; (!this.unsentClip) &amp;&amp; (event.playbackTime > (this.lastClip + clipLag)))
-    this.clipping = false;
+    // Do a root-mean-square on the samples: sum up the squares...
+    for (var i=0; i&lt;bufLength; i++) {
+      x = buf[i];
+      if (Math.abs(x)>=this.clipLevel) {
+        this.clipping = true;
+        this.unsentClip = true;  // Make sure, for every clip, we send a message.
+        this.lastClip = event.playbackTime + (i/this.sampleRate);
+      }
+      sum += x * x;
+    }
 
-  // How long has it been since our last update?
-  this.timeToNextUpdate -= this.last
-  if (this.timeToNextUpdate&lt;0) {
-    this.timeToNextUpdate = this.updatingInterval;
-    this.postMessage(
-      { "volume": this.volume,
-        "clip": this.clipping });
-    this.unsentClip = false;
-  }
+    // ... then take the square root of the sum.
+    var rms =  Math.sqrt(sum / bufLength);
+
+    // Now smooth this out with the smoothing factor applied
+    // to the previous sample - take the max here because we
+    // want "fast attack, slow release."
+    this.volume = Math.max(rms, this.volume*this.smoothing);
+    if (this.clipping &amp;&amp; (!this.unsentClip) &amp;&amp; (event.playbackTime > (this.lastClip + clipLag)))
+      this.clipping = false;
+
+    // How long has it been since our last update?
+    this.timeToNextUpdate -= this.last
+    if (this.timeToNextUpdate&lt;0) {
+      this.timeToNextUpdate = this.updatingInterval;
+      this.postMessage(
+        { "volume": this.volume,
+          "clip": this.clipping });
+      this.unsentClip = false;
+    }
+  };
 };</pre>
-    </section>
+  </section>
   <section>
     <h4>Reimplementing ChannelMerger</h4>
     <p>This worker shows how to merge inputs into a single output channel.</p>
 
     <h5>Main file javascript</h5>
-    <pre class="highlight">var mergerNode = audioContext.createAudioWorker("merger_worker.js", [1,1,1,1,1,1], [6] );</pre>
+    <pre class="highlight">audioContext.createAudioWorker("merger_worker.js").then(function(worker) {
+    var mergerNode = worker.createAudioWorkerNode();
+    // place into graph...
+  });</pre>
 
     <h5>merger_worker.js</h5>
-    <pre class="highlight">onaudioprocess = function ( event ) {
-  for (var input=0; input&lt;event.inputs.length; input++)
+
+    <pre class="highlight">setNodeConfiguration([1,1,1,1,1,1], [6]);
+onaudionodecreated = function(createEvent) {
+  createEvent.nodeHandle.onaudioprocess = function ( event ) {
+    for (var input=0; input&lt;event.inputs.length; input++)
     event.outputs[0][input].set(event.inputs[input][0]);
+  };
 };</pre>
     </section>
   </section>
@@ -2603,6 +2703,32 @@ handler.
 </section>
 
 <section>
+<h2>The AudioNodeCreatedEvent Interface</h2>
+
+<p>
+This is an <code>Event</code> object which is dispatched to
+<a><code>AudioWorkerGlobalScope</code></a> objects to handle the creation of
+an <a>AudioWorkerNode</a>, when the main thread has called <code>createAudioWorkerNode()</code>
+on the corresponding <a>AudioWorker</a>.
+</p>
+
+<p>
+  The event handler is provided with an <a>AudioWorkerNodeHandle</a> that represents the
+  node which is being created. At a minimum, the handle's <code>onaudioprocess</code>
+  EventHandler should be initialized to a function that will perform audio processing
+  on sample blocks.
+</p>
+
+<dl title="interface AudioNodeCreatedEvent : Event" class="idl">
+    <dt>readonly attribute AudioWorkerNodeHandle nodeHandle</dt>
+    <dd>This attribute provides the <a>AudioWorkerNodeHandle</a> for the node being created.</dd>
+    <dt>readonly attribute &lt;Transferable&gt; data</dt>
+    <dd>This attribute exposes data passed as the argument to <code>createAudioWorkerNode()</code>
+    in the main thread, to be used in setup of the new AudioNode.</dd>
+</dl>
+</section>
+
+<section>
 <h2>The AudioProcessEvent Interface</h2>
 
 <p>
@@ -2617,6 +2743,11 @@ This is an <code>Event</code> object which is dispatched to
   inputs) is then placed into the <code>outputBuffers</code>.
 </p>
 
+<p>
+  Note that the <code>target</code> attribute of an <a>AudioProcessEvent</a> is
+  the <a>AudioWorkerNodeHandle</a> for the node that is doing the processing.
+</p>
+
 <dl title="interface AudioProcessEvent : Event" class="idl">
     <dt> readonly attribute double playbackTime </dt>
     <dd>
@@ -2629,7 +2760,7 @@ This is an <code>Event</code> object which is dispatched to
     <dt>readonly attribute sequence<Float32Array[]> inputs</dt>
     <dd>
       <p>
-        A readonly array of Arrays of Float32Arrays.  The top-level sequence is organized by input; each input may contain multiple channels; each channel contains a Float32Array of sample data.  The initial size of the channel array will be determined by the number of channels specified for that input in the createAudioWorker() method.  However, an onprocess handler may alter this number of channels in the input dynamically, either by adding a Float32Array of blocksize length (128) or by reducing the Array (by reducing the Array.length or by using Array.pop() or Array.slice().  The event object, the Array and the Float32Arrays will be reused by the processing system, in order to minimize memory churn.
+        A readonly array of Arrays of Float32Arrays.  The top-level sequence is organized by input; each input may contain multiple channels; each channel contains a Float32Array of sample data.  The initial size of the channel array will be determined by the number of channels specified for that input in the setNodeConfiguration() method.  However, an onprocess handler may alter this number of channels in the input dynamically, either by adding a Float32Array of blocksize length (128) or by reducing the Array (by reducing the Array.length or by using Array.pop() or Array.slice().  The event object, the Array and the Float32Arrays will be reused by the processing system, in order to minimize memory churn.
       </p>
       <p>
         Any reordering performed on the Array for an input will not reorganize the connections to the channels for subsequent events.
@@ -2638,7 +2769,7 @@ This is an <code>Event</code> object which is dispatched to
     <dt>readonly attribute sequence<Float32Array[]> outputs</dt>
     <dd>
       <p>
-        A readonly array of Arrays of Float32Arrays.  The top-level sequence is organized by output; each output may contain multiple channels; each channel contains a Float32Array of sample data.  The initial size of the channel array will be determined by the number of channels specified for that output in the createAudioWorker() method.  However, an onprocess handler may alter this number of channels in the output dynamically, either by adding a Float32Array of blocksize length (128) or by reducing the Array (by reducing the Array.length or by using Array.pop() or Array.slice().  The event object, the Array and the Float32Arrays will be reused by the processing system, in order to minimize memory churn.
+        A readonly array of Arrays of Float32Arrays.  The top-level sequence is organized by output; each output may contain multiple channels; each channel contains a Float32Array of sample data.  The initial size of the channel array will be determined by the number of channels specified for that output in the setNodeConfiguration() method.  However, an onprocess handler may alter this number of channels in the output dynamically, either by adding a Float32Array of blocksize length (128) or by reducing the Array (by reducing the Array.length or by using Array.pop() or Array.slice().  The event object, the Array and the Float32Arrays will be reused by the processing system, in order to minimize memory churn.
       </p>
       <p>
         Any reordering performed on the Array for an output will not reorganize the connections to the channels for subsequent events.
