@@ -683,8 +683,9 @@ cases, only a single <a><code>AudioContext</code></a> is used per document.</p>
     <dd>
       The <dfn id="createAudioWorker-context"><code>createAudioWorker</code></dfn> method creates an <a><code>AudioWorker</code></a> and its associated <a><code>AudioWorkerGlobalScope</code></a> 
       for direct audio processing using JavaScript.  An <a><code>AudioWorker</code></a> acts as a factory for <a><code>AudioWorkerNode</code></a> instances,
-      allowing the nodes to be created synchronously on demand.  Because script loading must be performed asynchronously, a Promise is returned. Its
-      result is an <a>AudioWorker</a> whose script has been loaded and run, and which is ready to create nodes.
+      allowing the nodes to be created synchronously on demand.  Because script loading must be performed asynchronously, newly created nodes may not be able to
+      process audio immediately on creation.  However once the <a>AudioWorker</a>'s script has been loaded and run, which can be detected via the <code</code> event callback,
+      nodes can be created with the assurance of no script-induced delays.
 
       <dl class=parameters>
         <dt> DOMString scriptURL </dt>
@@ -2203,118 +2204,10 @@ href="http://www.w3.org/html/wg/drafts/html/master/infrastructure.html#cors-cros
 </p>
 
 <dl title="interface AudioWorker" class="idl">
+  <dt>attribute EventHandler onload</dt>
+  <dd><p>An EventHandler of type <code>Event</code> that is notified after the script of thsw <a>AudioWorker</a> has been loaded and fully executed.</p></dd>
   <dt>readonly attribute AudioContext context</dt>
   <dd>The <a>AudioContext</a> from which this <a>AudioWorker</a> was created.
-  </dd>
-  <dt>AudioWorkerNode createAudioWorkerNode(optional sequence &lt;Transferable&gt; data)</dt>
-  <dd>Creates a new <a>AudioWorkerNode</a> that exhibits the parameters and input/output configuration
-      defined by the <a>AudioWorkerGlobalScope</a>. The node is available immediately for use. Following this call,
-      an <a>AudioNodeCreatedEvent</a> is dispatched that creates the audio thread side of the node. The node does not
-      actually begin to process audio until this event dispatch has completed and an onaudioprocess handler has been
-      attached to the node.
-    <dl class="parameters">
-      <dt>optional sequence &lt;Transferable&gt; data</dt>
-      <dd>
-        The <a><code>data</code></a> parameter is provided in an <a>AudioNodeCreatedEvent</a> dispatched to a
-        <a>AudioWorkerGlobalScope</a>'s <code>onaudionodecreated</code> handler. It allows the audio thread
-        to initialize nodes in a way that depends on some data passed in from the main thread.  Data passed from the
-        main thread is transferred to the audio thread and thus is subject to neutering.     
-      </dd>
-    </dl>
-  </dd>
-  <dt>void terminate()</dt>
-  <dd>The terminate() method, when invoked, must cause the 
-    <a href="http://dev.w3.org/html5/workers/#terminate-a-worker">"terminate 
-      a worker"</a> algorithm to be run on the worker with which the object 
-      is associated.  This will cease any <a>AudioProcessEvent</a>s being
-      dispatched to the AudioWorker, and will cause the destruction of the
-      associated <a>AudioWorkerGlobalScope</a>.  In practical terms, this means all nodes created by this <a>AudioWorker</a>
-      will be disconnected from any downstream connections.</dd>
-</dl>
-</section>
-
-<section>
-<h2>The <dfn>AudioWorkerNode</dfn> Interface</h2>
-
-<p>This interface represents an <a><code>AudioNode</code></a> which interacts 
-  with an <a>AudioWorker</a> thread to generate, process, or analyse audio directly. 
-  An <a>AudioWorkerNode</a> is represented in the audio thread by an <a>AudioWorkerNodeHandle</a>.
-</p>
-<p>Nota bene that if the Web Audio implementation normally runs audio process 
-  at higher than normal thread priority, utilizing AudioWorkerNodes may cause 
-  demotion of the priority of the audio thread (since user scripts cannot be 
-  run with higher than normal priority).</p>
-
-<pre>
-    numberOfInputs  : variable
-    numberOfOutputs : variable
-
-    channelCount = numberOfInputChannels;
-    channelCountMode = "explicit";
-    channelInterpretation = "speakers";
-</pre>
-
-<p>Example usage:</p>
-<pre class="highlight">
-  context.createAudioWorker( "bitcrusher.js" ).then(function(worker) {
-    var node = worker.createAudioWorkerNode();
-  });
-</pre>
-
-<dl title="interface AudioWorkerNode : AudioNode" class="idl">
-  <dt>void postMessage(any message, optional sequence&lt;Transferable> transfer)</dt>
-  <dd>postMessage may be called to send a message to the Audio Worker, via the
-    algorithm defined by <a href="http://dev.w3.org/html5/workers/#dom-worker-postmessage">
-    the Worker specification</a>.</dd>
-  <dt>attribute EventHandler onmessage</dt>
-  <dd>The onmessage handler is called whenever the Audio Worker posts a 
-    message back to the main thread.</dd>
-</dl>
-</dl>
-<p>
-  Note that <a>AudioWorkerNode</a> objects will also have read-only 
-  AudioParam objects for each named parameter added via the 
-  <code>addParameter</code> method.  As this is dynamic, it cannot be captured
-  in IDL.
-</p>
-  
-<!--<div title="AudioWorkerNode implements Worker" class="idl">-->
-  <p>AudioWorkerNodes must implement the <a>Worker</a>
-  interface for communication with the audio worker script.</p>
-<!--</div>-->
-</section>
-
-<section>
-<h2>The AudioWorkerGlobalScope Interface</h2>
-
-<p>This interface is a <a><code>DedicatedWorkerGlobalScope</code></a>-derived 
-  object representing the context in which audio processing scripts are run
-  for nodes created from a given <a>AudioWorker</a>; 
-  it is designed to enable the generation, processing, and analysis of audio 
-  data directly using JavaScript in a Worker thread. </p>
-
-<p>
-The <a><code>AudioWorkerGlobalScope</code></a> has an 
-<dfn id="audionodecreated-worker">audionodecreated</dfn> event that is dispatched
-when new <a>AudioNode</a>s are created on the main thread.
-
-<dl title="interface AudioWorkerGlobalScope : DedicatedWorkerGlobalScope" class="idl">
-  <dt>attribute EventHandler onaudionodecreated</dt>
-  <dd>
-    A property used to set the <code>EventHandler</code> (described in <cite>
-    <a href="http://www.whatwg.org/specs/web-apps/current-work/#eventhandler">
-    HTML</a></cite>[[!HTML]]) for the <a href="#audionodecreated-worker">
-    <code>audionodecreated</code></a> event that is dispatched to
-    <a><code>AudioWorkerGlobalScope</code></a> when a new
-    <a><code>AudioWorkerNode</code></a> is created. An event of type
-    <a><code>AudioNodeCreatedEvent</code></a> will be dispatched to the event 
-    handler.
-  </dd>
-  <dt>readonly attribute float sampleRate</dt>
-  <dd>
-    The sample rate of the host <a>AudioContext</a> (since inside the 
-    <a>Worker</a> scope, the user will not have direct access to the 
-    <a>AudioContext</a>.
   </dd>
   <dt>AudioParam addParameter(DOMString name, optional float defaultValue) </dt>
   <dd>
@@ -2414,6 +2307,107 @@ when new <a>AudioNode</a>s are created on the main thread.
       </li>
     </ul>
   </dd>
+  <dt>AudioWorkerNode createAudioWorkerNode()</dt>
+  <dd>Creates a new <a>AudioWorkerNode</a> that exhibits the previously parameters and input/output configuration
+      for this <a>AudioWorker</a>. The node is available immediately for use. Following this call,
+      an <a>AudioNodeCreatedEvent</a> is dispatched that creates the audio thread side of the node; this
+      notification is delayed until the worker's script has loaded and run an any <code>onload</code> events have been dispatched. The node does not
+      actually begin to process audio until all creation event processing has completed and an onaudioprocess handler has been
+      attached to the node.
+  </dd>
+  <dt>void terminate()</dt>
+  <dd>The terminate() method, when invoked, must cause the 
+    <a href="http://dev.w3.org/html5/workers/#terminate-a-worker">"terminate 
+      a worker"</a> algorithm to be run on the worker with which the object 
+      is associated.  This will cease any <a>AudioProcessEvent</a>s being
+      dispatched to the AudioWorker, and will cause the destruction of the
+      associated <a>AudioWorkerGlobalScope</a>.  In practical terms, this means all nodes created by this <a>AudioWorker</a>
+      will be disconnected from any downstream connections.</dd>
+</dl>
+</section>
+
+<section>
+<h2>The <dfn>AudioWorkerNode</dfn> Interface</h2>
+
+<p>This interface represents an <a><code>AudioNode</code></a> which interacts 
+  with an <a>AudioWorker</a> thread to generate, process, or analyse audio directly. 
+  An <a>AudioWorkerNode</a> is represented in the audio thread by an <a>AudioWorkerNodeHandle</a>.
+</p>
+<p>Nota bene that if the Web Audio implementation normally runs audio process 
+  at higher than normal thread priority, utilizing AudioWorkerNodes may cause 
+  demotion of the priority of the audio thread (since user scripts cannot be 
+  run with higher than normal priority).</p>
+
+<pre>
+    numberOfInputs  : variable
+    numberOfOutputs : variable
+
+    channelCount = numberOfInputChannels;
+    channelCountMode = "explicit";
+    channelInterpretation = "speakers";
+</pre>
+
+<p>Example usage:</p>
+<pre class="highlight">
+    var node = context.createAudioWorker( "inverter.js" ).createAudioWorkerNode();
+  });
+</pre>
+
+<dl title="interface AudioWorkerNode : AudioNode" class="idl">
+  <dt>void postMessage(any message, optional sequence&lt;Transferable> transfer)</dt>
+  <dd>postMessage may be called to send a message to the Audio Worker, via the
+    algorithm defined by <a href="http://dev.w3.org/html5/workers/#dom-worker-postmessage">
+    the Worker specification</a>.</dd>
+  <dt>attribute EventHandler onmessage</dt>
+  <dd>The onmessage handler is called whenever the Audio Worker posts a 
+    message back to the main thread.</dd>
+</dl>
+</dl>
+<p>
+  Note that <a>AudioWorkerNode</a> objects will also have read-only 
+  AudioParam objects for each named parameter added via the 
+  <code>addParameter</code> method.  As this is dynamic, it cannot be captured
+  in IDL.
+</p>
+  
+<!--<div title="AudioWorkerNode implements Worker" class="idl">-->
+  <p>AudioWorkerNodes must implement the <a>Worker</a>
+  interface for communication with the audio worker script.</p>
+<!--</div>-->
+</section>
+
+<section>
+<h2>The AudioWorkerGlobalScope Interface</h2>
+
+<p>This interface is a <a><code>DedicatedWorkerGlobalScope</code></a>-derived 
+  object representing the context in which audio processing scripts are run
+  for nodes created from a given <a>AudioWorker</a>; 
+  it is designed to enable the generation, processing, and analysis of audio 
+  data directly using JavaScript in a Worker thread. </p>
+
+<p>
+The <a><code>AudioWorkerGlobalScope</code></a> has an 
+<dfn id="audionodecreated-worker">audionodecreated</dfn> event that is dispatched
+when new <a>AudioNode</a>s are created on the main thread.
+
+<dl title="interface AudioWorkerGlobalScope : DedicatedWorkerGlobalScope" class="idl">
+  <dt>attribute EventHandler onaudionodecreated</dt>
+  <dd>
+    A property used to set the <code>EventHandler</code> (described in <cite>
+    <a href="http://www.whatwg.org/specs/web-apps/current-work/#eventhandler">
+    HTML</a></cite>[[!HTML]]) for the <a href="#audionodecreated-worker">
+    <code>audionodecreated</code></a> event that is dispatched to
+    <a><code>AudioWorkerGlobalScope</code></a> when a new
+    <a><code>AudioWorkerNode</code></a> is created. An event of type
+    <a><code>AudioNodeCreatedEvent</code></a> will be dispatched to the event 
+    handler.
+  </dd>
+  <dt>readonly attribute float sampleRate</dt>
+  <dd>
+    The sample rate of the host <a>AudioContext</a> (since inside the 
+    <a>Worker</a> scope, the user will not have direct access to the 
+    <a>AudioContext</a>.
+  </dd>
 </dl>
 </section>
 
@@ -2454,7 +2448,8 @@ controlled by the application and letting the node send data to the application.
     <a><code>AudioWorkerGlobalScope</code></a> when the associated
     <a><code>AudioWorkerNode</code></a> is connected. An event of type
     <a><code>AudioProcessEvent</code></a> will be dispatched to the event 
-    handler.
+    handler.  Setting this attribute to null will prevent further audio processing by the node
+    and make the node eligible for garbage collection.
   </dd>
 </dl>
 </section>
@@ -2470,11 +2465,23 @@ controlled by the application and letting the node send data to the application.
         use AudioParams (in this case, treated as a-rate) inside an 
         AudioWorker.</p>
 
-    <h5>Main file javascript</h5>
-    <pre class="highlight">var bitcrusherPromise = audioContext.createAudioWorker("bitcrusher_worker.js");
-bitcrusherPromise.then(function(worker) {
-  // At this point, the worker is loaded and available for synchronous AudioWorkerNode creation.
-  var bitcrusherNode = worker.createAudioWorkerNode({bits: 8}); // In this example the number of bits is fixed for a given node.
+    <h5>Main file javascript (with no script loading wait)</h5>
+    <pre class="highlight">var worker = audioContext.createAudioWorker("bitcrusher_worker.js");
+worker.addParameter( "bits", 8 );
+worker.addParameter( "frequencyReduction", 0.5 );
+var bitcrusherNode = worker.createAudioWorkerNode();   // node will not actually operate until worker script is initialized
+bitcrusherNode.bits.value = 4;
+bitcrusherNode.frequencyReduction.value = 0.8;
+</pre>
+
+    <h5>Main file javascript (with script loading wait)</h5>
+    <pre class="highlight">var worker = audioContext.createAudioWorker("bitcrusher_worker.js");
+worker.addParameter( "bits", 8 );
+worker.addParameter( "frequencyReduction", 0.5 );
+worker.onload = function(e) {
+  // At this point, the worker is loaded and available for AudioWorkerNode creation with no script loading delay.
+  var bitcrusherNode = worker.createAudioWorkerNode();
+  bitcrusherNode.bits.value = 4;
   bitcrusherNode.frequencyReduction.value = 0.8;
   /* The node can now be used in the audio processing graph immediately. */
 })
@@ -2482,12 +2489,8 @@ bitcrusherPromise.then(function(worker) {
 
     <h5>bitcrusher_worker.js</h5>
     <pre class="highlight">// Configure custom AudioParam - frequency reduction, 0-1, default 0.5
-addParameter( "frequencyReduction", 0.5 );
 
 onaudionodecreated = function(e) {
-  // construction-time data passed from main thread
-  var bits = (e.data instanceof Object && e.data.bits) || 8;   // e.data is per-node data passed to createAudioWorkerNode()
-
   // internal state variables of node -- in this example, we use closure variables rather than dynamically adding attributes to the node handle.
   var phaser = 0;
   var lastDataValue = 0;
@@ -2525,7 +2528,12 @@ onaudionodecreated = function(e) {
       the main thread.  This node does not use any output. </p>
 
     <h5>Main file javascript</h5>
-<pre class="highlight">audioContext.createAudioWorker("vu_meter_worker.js").then(function(worker) {
+<pre class="highlight">var worker = audioContext.createAudioWorker("vu_meter_worker.js");
+
+// This kind of node has one mixed-to-mono input, no outputs
+worker.setNodeConfiguration([1], []);
+
+worker.onload = function(e) {
   var vuNode = worker.createAudioWorkerNode();
 
   // This handles communication back from the volume meter
@@ -2549,14 +2557,10 @@ onaudionodecreated = function(e) {
   // Set up volume and clip attributes.  These will be updated by our onmessage.
   vuNode.volume = 0;
   vuNode.clip = false;</pre>
-});
+};
 
     <h5>vu_meter_worker.js</h5>
-    <pre class="highlight">// This kind of node has one mixed-to-mono input, no outputs
-setNodeConfiguration([1], []);
-
-
-onaudionodecreated = function(e) {
+    <pre class="highlight">onaudionodecreated = function(e) {
  var vu = e.nodeHandle;
 
  // how many samples between updates - default 100ms
@@ -2625,14 +2629,15 @@ onaudionodecreated = function(e) {
     <p>This worker shows how to merge inputs into a single output channel.</p>
 
     <h5>Main file javascript</h5>
-    <pre class="highlight">audioContext.createAudioWorker("merger_worker.js").then(function(worker) {
-    var mergerNode = worker.createAudioWorkerNode();
+    <pre class="highlight">var mergerWorker = audioContext.createAudioWorker("merger_worker.js");
+  mergerWorker.setNodeConfiguration([1,1,1,1,1,1], [6]);
+  var merger = mergerWorker.createAudioWorkerNode();
     // place into graph...
   });</pre>
 
     <h5>merger_worker.js</h5>
 
-    <pre class="highlight">setNodeConfiguration([1,1,1,1,1,1], [6]);
+    <pre class="highlight">
 onaudionodecreated = function(createEvent) {
   createEvent.nodeHandle.onaudioprocess = function ( event ) {
     for (var input=0; input&lt;event.inputs.length; input++)
@@ -2722,9 +2727,6 @@ on the corresponding <a>AudioWorker</a>.
 <dl title="interface AudioNodeCreatedEvent : Event" class="idl">
     <dt>readonly attribute AudioWorkerNodeHandle nodeHandle</dt>
     <dd>This attribute provides the <a>AudioWorkerNodeHandle</a> for the node being created.</dd>
-    <dt>readonly attribute &lt;Transferable&gt; data</dt>
-    <dd>This attribute exposes data passed as the argument to <code>createAudioWorkerNode()</code>
-    in the main thread, to be used in setup of the new AudioNode.</dd>
 </dl>
 </section>
 
